@@ -1,0 +1,78 @@
+PUT _xpack/watcher/watch/_execute
+{
+  "watch": {
+    "trigger": {
+      "schedule": {
+        "interval": "1m"
+      }
+    },
+    "input": {
+      "search": {
+        "request": {
+          "search_type": "query_then_fetch",
+          "indices": [
+            "heartbeat-*"
+          ],
+          "types": [],
+          "body": {
+            "size": 1,
+            "_source": [
+              "@timestamp"
+            ],
+            "query": {
+              "term": {
+                "monitor.status": "up"
+              }
+            }
+          }
+        }
+      }
+    },
+    "condition": {
+      "compare": {
+        "ctx.payload.hits.total": {
+          "gte": 0
+        }
+      }
+    },
+    "actions": {
+      "my-logging-action": {
+        "logging": {
+          "level": "info",
+          "text": """
+ {{#ctx.payload._value}}Incident timestamp: {{@timestamp}}{{/ctx.payload._value}}
+"""
+        }
+      }
+    },
+    "transform": {
+      "script": {
+        "id": "heartbeat_script",
+        "params": {
+          "tz": "Asia/Kolkata"
+        }
+      }
+    }
+  }
+}
+
+POST _scripts/heartbeat_script
+{
+  "script": {
+    "lang": "painless", 
+    "code":"""
+      DateFormat df = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS");
+      df.setTimeZone(TimeZone.getTimeZone("UTC"));
+      DateFormat ndf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSz");
+      ndf.setTimeZone(TimeZone.getTimeZone(params.tz));
+      return ctx.payload.hits.hits
+        .stream()
+        .map(r -> {
+          return [
+            "@timestamp" : ndf.format(df.parse(r._source['@timestamp']))
+            ];
+        })
+        .collect(Collectors.toList());
+    """
+  }
+}
