@@ -1,0 +1,78 @@
+# grab all snapshots and index them to a single document with id source-data
+PUT _watcher/watch/collect_snapshot_data
+{
+  "trigger": {
+    "schedule": {
+      "interval": "5m"
+    }
+  },
+  "input": {
+    "http": {
+      "request": {
+        "host": "localhost",
+        "port": 9200,
+        "path": "/_snapshot/backup/_all",
+        "auth": {
+          "basic": {
+            "username": "elastic",
+            "password": "password"
+          }
+        }
+      }
+    }
+  },
+  "actions": {
+    "index_payload": {
+      "index": {
+        "index": "snapshot-register",
+        "doc_id": "source-data-document"
+      }
+    }
+  }
+}
+# now a watch to chop up that one document into separate documents, one per snapshot
+PUT _watcher/watch/split_snapshot_data
+{
+  "trigger": {
+    "schedule": {
+      "interval": "5m"
+    }
+  },
+  "input": {
+    "search": {
+      "request": {
+        "indices": [
+          "snapshot-register"
+        ],
+        "body": {
+          "query": {
+            "term": {
+              "_id": "source-data-document"
+            }
+          }
+        }
+      }
+    }
+  },
+  "actions": {
+    "index_payload": {
+      "transform": {
+        "script": """
+          def hits = ctx.payload.hits.hits
+                      .stream()
+                      .map(r -> {
+                        return r._source.snapshots;} )
+                      .collect(Collectors.toList());
+          return hits
+        """
+      },
+      "index": {
+        "index": "snapshot-register"
+      }
+    }
+  }
+}
+DELETE snapshot-register
+POST /_watcher/watch/collect_snapshot_data/_execute
+POST /_watcher/watch/split_snapshot_data/_execute
+GET snapshot-register/_search
