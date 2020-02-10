@@ -1,0 +1,87 @@
+# clean up
+DELETE snapshots-history
+# grab all snapshots and index them as searate documents with snapshot name as _id
+POST _watcher/watch/_execute
+{
+  "watch": {
+    "trigger": {
+      "schedule": {
+        "interval": "11h"
+      }
+    },
+    "input": {
+      "http": {
+        "request": {
+          "host": "localhost",
+          "port": 9200,
+          "path": "/_snapshot/backup/_all",
+          "auth": {
+            "basic": {
+              "username": "elastic",
+              "password": "password"
+            }
+          }
+        }
+      }
+    },
+    "transform": {
+      "script": """
+// Each document in the list requires a field _id, which we'll set to the unique value of snapshot name 
+ctx.payload.snapshots.forEach(e -> { e._id = e.snapshot });
+// The payload must have a "_doc" field with an array of objects, all objects will be written in a single bulk request
+return [ '_doc': ctx.payload.snapshots ];
+          """
+    },
+    "actions": {
+      "debugging": {
+        "logging": {
+          "text": "{{ctx.payload}}"
+        }
+      },
+      "index_snapshot_records_as_docs": {
+        "index": {
+          "index": "snapshots-history"
+        }
+      }
+    }
+  }
+}
+# now you can search for specific snapshot records with particular attributes
+GET /snapshots-history/_search
+# search for all snapshots completed within the last 15mins
+GET /snapshots-history/_search
+{
+  "query": {
+    "range": {
+      "end_time": {
+        "gte": "now-15m/m"
+      }
+    }
+  }
+}
+# find all currently running snapshots
+GET /snapshots-history/_search
+{
+  "query": {
+    "match": {
+      "state": "IN_PROGRESS"
+    }
+  }
+}
+# find all snapshots that are not in progress and were not successful
+GET /snapshots-history/_search
+{
+  "query": {
+    "bool": {
+      "filter": {
+        "bool": {
+          "must_not": [
+              {"match": { "state": "SUCCESS"}},
+              {"match": { "state": "IN_PROGRESS" }}
+            ]
+        }
+      }
+    }
+  }
+}
+# now imagine the dashboards you could build or Watches you could alert with...
