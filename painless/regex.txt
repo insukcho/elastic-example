@@ -1,0 +1,20 @@
+
+GET /test/_search
+{
+    "query": {
+        "bool" : {
+            "filter" : {
+                "script" : {
+                    "script" : {
+                        "source": """
+                        Pattern p = /(?<=\"boardNo\":\")280{1}/;
+                        def m = p.matcher(doc['data.keyword'].value);
+                        return m.find();
+                        """,
+                        "lang": "painless"
+                     }
+                }
+            }
+        }
+    }
+}
