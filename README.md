@@ -1,2 +1,2 @@
-# elasticexample
+# elastic-example
 This repo is for keeping various code snippet when suing all Elastic Stack
